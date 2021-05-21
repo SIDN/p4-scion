@@ -1,0 +1,37 @@
+[general]
+id = "cs1-ff00_0_111-1"
+config_dir = "gen/ASff00_0_111"
+reconnect_to_dispatcher = true
+
+[trust_db]
+connection = "gen-cache/cs1-ff00_0_111-1.trust.db"
+
+[beacon_db]
+connection = "gen-cache/cs1-ff00_0_111-1.beacon.db"
+
+[path_db]
+connection = "gen-cache/cs1-ff00_0_111-1.path.db"
+
+[tracing]
+enabled = true
+debug = true
+agent = "172.17.0.1:6831"
+
+[metrics]
+prometheus = "127.0.0.18:30452"
+
+[features]
+
+[log.console]
+level = "debug"
+
+[beaconing]
+    # The interval between originating beacons. (default 5s)
+    origination_interval = "10s"
+
+    # The interval between propagating beacons. (default 5s)
+    propagation_interval = "10s"
+
+    # The interval between registering beacons. (default 5s)
+    registration_interval = "10s"
+

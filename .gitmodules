@@ -1,0 +1,3 @@
+[submodule "controller/scion_scapy"]
+	path = controller/scion_scapy
+	url = git@github.com:SIDN/scapy-scion.git

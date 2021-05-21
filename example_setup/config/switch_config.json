@@ -1,0 +1,31 @@
+{
+  "localISD": 1,
+  "localAS": "ff0000000110",
+  "interfaces": [
+    { "interface": 1, "portId": 1 },
+    { "interface": 2, "portId": 2 },
+    { "interface": 2, "portId": 3, "comment": "Used when part of a path segment is used, i.e. a hop field to forward traffic from an upstream AS but is used to send traffic from the local AS" },
+    { "interface": 0, "portId": 3 },
+    { "interface": 0, "portId": 68 },
+    { "interface": 2, "portId": 64, "comment": "Needed if AS is child and receives packets that were forwarded to CPU" }
+  ],
+  "localDestinations": [
+    { "dl": 0, "dt": 0, "host": "10.0.30.10", "netmask": "255.255.255.0", "egressPortId": 3, "dstMAC": "08:00:27:8b:38:63", "dstPort": 30041}
+  ],
+  "localDestinationsService": [
+    { "dl": 0, "dt": 1, "host": 65536, "egressPortId": 3, "dstIP": "10.0.30.10", "dstMAC": "08:0:27:8b:38:63", "dstPort": 30041},
+    { "dl": 0, "dt": 1, "host": 131072, "egressPortId": 3, "dstIP": "10.0.30.10", "dstMAC": "08:00:27:8b:38:63", "dstPort": 30041}
+  ],
+  "forwardLocal": [],
+  "forwardRemote": [
+    { "egressInterface": 1, "egressPortId": 1, "dstIP": "10.0.10.10", "dstMAC": "08:00:27:22:82:4a", "dstPort": 50000 },
+    { "egressInterface": 2, "egressPortId": 2, "dstIP": "10.0.20.10", "dstMAC": "08:00:27:3e:ac:95", "dstPort": 50000 }
+  ],
+  "localSource": [
+    { "egressPortId": 1, "srcIP": "10.0.10.5", "srcMAC": "08:00:27:b4:c9:7a", "srcPort": 50000},
+    { "egressPortId": 2, "srcIP": "10.0.20.5", "srcMAC": "08:00:27:1d:8e:1a", "srcPort": 50000},
+    { "egressPortId": 3, "srcIP": "10.0.30.5", "srcMAC": "08:00:27:2c:f8:c4", "srcPort": 50000},
+    { "egressPortId": 68, "srcIP": "0.0.0.0", "srcMAC": "00:00:00:00:00:00", "srcPort": 0},
+    { "egressPortId": 64, "srcIP": "0.0.0.0", "srcMAC": "00:00:00:00:00:00", "srcPort": 0}
+  ]
+}

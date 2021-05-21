@@ -1,0 +1,27 @@
+[general]
+hop_fields_registration_server = "10.0.5.6:10000"
+id = "sd1-ff00_0_110"
+config_dir = "gen/ASff00_0_110"
+reconnect_to_dispatcher = true
+
+[trust_db]
+connection = "gen-cache/sd1-ff00_0_110.trust.db"
+
+[path_db]
+connection = "gen-cache/sd1-ff00_0_110.path.db"
+
+[sd]
+address = "127.0.0.12:30255"
+
+[tracing]
+enabled = true
+debug = true
+agent = "172.17.0.1:6831"
+
+[metrics]
+prometheus = "127.0.0.12:30455"
+
+[features]
+
+[log.console]
+level = "debug"

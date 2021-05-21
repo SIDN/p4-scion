@@ -1,0 +1,6 @@
+grpcio
+grpcio-tools
+googleapis-common-protos
+protobuf
+scapy
+pycryptodomex
