@@ -4,6 +4,9 @@
 
 This is a P4 implementation of a SCION border router. It comes with several control plane applications and services.
 
+A blog on this implementation can be found on our website: 
+[Future internet at terabit speeds: SCION in P4](https://www.sidnlabs.nl/nieuws-en-blogs/future-internet-at-terabit-speeds-scion-in-p4)
+
 ## Build
 
 Start by initialising the git submodules:
