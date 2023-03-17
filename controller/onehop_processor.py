@@ -38,6 +38,8 @@ import grpc
 from scion_grpc import hopfields_pb2_grpc
 from scion_grpc import hopfields_pb2
 
+from bfd_handling import BfdHandler
+
 from scion_crypto import get_key, compute_mac
 
 # Be aware of consDir when providing input for MAC!
@@ -48,7 +50,7 @@ logger.addHandler(logging.StreamHandler())
 logger.setLevel(logging.INFO)
 
 class OneHopProcessor:
-    def __init__(self, key, interface, grpc_address, interface_mapping):
+    def __init__(self, key, interface, grpc_address, interface_mapping, bfdHandler):
         self.key = key
         self.interface = interface
         self.grpc_address = grpc_address
@@ -56,6 +58,8 @@ class OneHopProcessor:
         self.interface_mapping = {}
         for im in interface_mapping:
             self.interface_mapping[im['portId']] = im['interface']
+        
+        self.bfdHandler = bfdHandler
 
         self.channel = grpc.insecure_channel(self.grpc_address)
         self.stub = hopfields_pb2_grpc.HopFieldsRegistrationServiceStub(self.channel)
@@ -64,7 +68,7 @@ class OneHopProcessor:
         if SCION in pkt:
             logger.debug("SCION packet")
             path = pkt[SCION].path
-            if isinstance(path, SCIONOneHopPath):
+            if isinstance(path, SCIONOneHopPath) and pkt[SCION].nextHdr != 0xCB:
                 new_pkt = pkt[Ether].payload
                 expTime = 63 # TODO Make configurable?
                 mac = binascii.unhexlify(str(pkt[Ether].src).replace(':', ''))
@@ -88,6 +92,10 @@ class OneHopProcessor:
                 except Exception as e:
                   logger.error("Error registering MAC: %s" % e)
                 sendp(new_pkt, iface=self.interface)
+            # If the packet is a BFD packet send it to the BFD handler
+            elif pkt[SCION].nextHdr == 0xCB:
+                if self.bfdHandler != None:
+                    self.bfdHandler.receivedPacket(pkt)
 
     def run(self):
         logger.info("Start sniffing on interface %s" % self.interface)
@@ -105,7 +113,7 @@ def main():
         "-m",
         "--mapping_config",
         default="interface_mapping.json",
-        help="config file containing the maapping between portIds and SCION interfacesi (default: inteface_mapping.json)"
+        help="config file containing the mapping between portIds and SCION interfacesi (default: inteface_mapping.json)"
     )
     parser.add_argument(
         "-i",
@@ -123,6 +131,11 @@ def main():
         "--debug",
         action="store_true",
         help="Enable output of debug info")
+    parser.add_argument(
+        "-b",
+        "--bfd_config",
+        nargs=1,
+        help="enable BFD support and provide switch_config to define the topology")
     args = parser.parse_args()
 
     if args.debug:
@@ -134,8 +147,15 @@ def main():
 
     mappingJSON = open(args.mapping_config)
     mapping = json.load(mappingJSON)
+    
+    # Initialize bfdHandler with none to be able to use a single call to OneHopProcessor
+    bfdHandler = None
+    # Start BFD handler, if it is configured
+    if args.bfd_config:
+        bfdHandler = BfdHandler(args.bfd_config[0], key, args.interface)
+        bfdHandler.run()
 
-    processor = OneHopProcessor(key, args.interface, args.grpc_address, mapping)
+    processor = OneHopProcessor(key, args.interface, args.grpc_address, mapping, bfdHandler)
     processor.run()
 
 bind_layers(Ether, Ether, type = 0x5C10)

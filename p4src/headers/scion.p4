@@ -32,6 +32,7 @@ typedef bit<16> isdAddr_t;
 typedef bit<48> asAddr_t;
 
 enum bit<8> PathType {
+  EMPTY = 0x00,
   SCION = 0x01,
   ONEHOP = 0x02
 }
@@ -98,11 +99,10 @@ header scion_info_field_t {
 }
 
 header scion_hop_field_t {
-    bit<6>    rsv;
-    bit<1>    ingressRouterAlert;
-    bit<1>    egressRouterAlert;
+    bit<8>    routerAlerts;
     bit<8>    expTime;
     bit<16>   inIf;
     bit<16>   egIf;
     bit<48>   mac;
 }
+

@@ -345,6 +345,7 @@ parser ScionIngressParser(
 
 	state path {
 		transition select(hdr.scion_common.pathType) {
+		    PathType.EMPTY: accept;
 			PathType.SCION: path_scion;
 			PathType.ONEHOP: path_onehop;
 			// Other path types are not supported
@@ -365,6 +366,8 @@ parser ScionIngressParser(
 		packet.extract(hdr.scion_path_meta);
 		udp_checksum.subtract({hdr.scion_path_meta.currInf, hdr.scion_path_meta.currHF, hdr.scion_path_meta.rsv, hdr.scion_path_meta.seg0Len, hdr.scion_path_meta.seg1Len, hdr.scion_path_meta.seg2Len});
 		
+		meta.currHF = hdr.scion_path_meta.currHF;
+
 		// We assume there is at least one info field present
 		transition select(hdr.scion_path_meta.seg1Len, hdr.scion_path_meta.seg2Len) {
 			(0, 0): info_field_0;
@@ -377,7 +380,6 @@ parser ScionIngressParser(
 		packet.extract(hdr.scion_info_field_0);
 		udp_checksum.subtract({hdr.scion_info_field_0.segId});
 
-		meta.currHF = hdr.scion_path_meta.currHF;
 		hdr.scion_info_field_1.segId = 0;
 		hdr.scion_info_field_2.segId = 0;
 
@@ -391,7 +393,6 @@ parser ScionIngressParser(
 		packet.extract(hdr.scion_info_field_1);
 		udp_checksum.subtract({hdr.scion_info_field_1.segId});
 
-		meta.currHF = hdr.scion_path_meta.currHF;
 		hdr.scion_info_field_2.segId = 0;
 
 		transition jump_start;
@@ -404,8 +405,6 @@ parser ScionIngressParser(
 		udp_checksum.subtract({hdr.scion_info_field_1.segId});
 		packet.extract(hdr.scion_info_field_2);
 		udp_checksum.subtract({hdr.scion_info_field_2.segId});
-		
-		meta.currHF = hdr.scion_path_meta.currHF;
 
 		transition jump_start;
 	}
@@ -796,9 +795,11 @@ control ScionIngressControl(
 		if (ig_prsr_md.parser_err != PARSER_ERROR_OK) {
 			drop();
 			exit;
-		} else {
-			meta.seg1Len = hdr.scion_path_meta.seg1Len;	
 		}
+		if (hdr.scion_common.pathType != PathType.EMPTY) {
+		    meta.seg1Len = hdr.scion_path_meta.seg1Len;
+        }
+        
 #ifndef DISABLE_IPV4
 		if (hdr.ipv4.isValid()) {
 			meta.payload_len = hdr.ipv4.totalLen - 20;
@@ -878,6 +879,12 @@ control ScionIngressControl(
 				meta.timestamp = hdr.scion_info_field_0.timestamp;
 				meta.nextSegId = hdr.scion_info_field_0.segId ^ hdr.scion_hop_field_0.mac[47:32];
 			}
+		} else if (hdr.scion_common.pathType == PathType.EMPTY) {
+			if (ig_intr_md.ingress_port != PORT_CPU) {
+				// If we receive a packet from another port than CPU we assume that the packet is addressed to this border router
+				send_to_cpu();
+				skip_processing = true;
+			}
 		} else {
 			// Unsupported path type
 			drop();
@@ -886,6 +893,7 @@ control ScionIngressControl(
 
 		bool mac_verification_successful = tbl_mac_verification.apply().hit;
 		bool ingress_verification_successful = tbl_ingress_verification.apply().hit;
+		meta.currHF2 = meta.currHF;
 
 		// Check whether the MAC was correct and we received the packet on the expect ingress port, or whether verification should be skipped (in case of a one-hop path)
 		if (((mac_verification_successful && ingress_verification_successful) || ig_intr_md.ingress_port == PORT_CPU) && !skip_processing) {
@@ -901,7 +909,7 @@ control ScionIngressControl(
 						hdr.scion_info_field_2.segId = meta.nextSegId;
 					}
 				}
-					
+
 				tbl_deliver_local.apply();
 			} else {
 				switch(tbl_forward.apply().action_run) {
@@ -925,12 +933,12 @@ control ScionIngressControl(
 			
 						if(hdr.scion_common.pathType == PathType.SCION) {
 							// Increase the index to the current hop field and update the header
-							meta.currHF = meta.currHF + 1;
+							@in_hash{ meta.currHF = meta.currHF + 1; }
 							hdr.scion_path_meta.currHF = meta.currHF;
 							// Assuming there is a next hop field...
 
 							// Update currInf if needed
-							meta.currHF2 = meta.currHF2 + 1; 
+							@in_hash{ meta.currHF2 = meta.currHF2 + 1; }
 							// Assuming currHF and currInf were valid
 
 							if (meta.currHF2 == meta.segLen) { 

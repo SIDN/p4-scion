@@ -2,7 +2,7 @@ This patch add functionality to SCION to register hop fields when they are gener
 
 Start by cloning the SCION source code from https://github.com/scionproto/scion
 
-This patch was generated against commit `cc33b6ecc62448b2c3a2484bde56844a57048b58`.
+This patch was generated against commit `2ade82199e4bfceea98b2b4594171df58633b4c0`.
 
 Apply the patch using git in the SCION source directory:
 `git apply scion.patch`
