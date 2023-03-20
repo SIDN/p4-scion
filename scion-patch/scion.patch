@@ -1,7 +1,29 @@
-diff --git a/go/cs/beaconing/extender.go b/go/cs/beaconing/extender.go
-index ff026164..7157c760 100644
---- a/go/cs/beaconing/extender.go
-+++ b/go/cs/beaconing/extender.go
+From 0508b70f88c71f1f309bedd3db4ed3e3c9dc2684 Mon Sep 17 00:00:00 2001
+From: LencigGaer <unwi567@o2online.de>
+Date: Thu, 25 Aug 2022 16:08:02 +0200
+Subject: [PATCH] Added hop field registration server
+
+---
+ control/beaconing/extender.go              |  49 +++
+ control/beaconing/grpc/BUILD.bazel         |   1 +
+ control/beaconing/grpc/hopfields_sender.go |  46 +++
+ control/cmd/control/main.go                |  12 +
+ control/onehop/BUILD.bazel                 |   2 +
+ control/tasks.go                           |  20 +-
+ pkg/proto/control_plane/hopfields.pb.go    | 344 +++++++++++++++++++++
+ pkg/segment/hop.go                         |  13 +
+ private/env/env.go                         |   3 +
+ proto/control_plane/v1/BUILD.bazel         |   1 +
+ proto/control_plane/v1/hopfields.proto     |  27 ++
+ 11 files changed, 509 insertions(+), 9 deletions(-)
+ create mode 100644 control/beaconing/grpc/hopfields_sender.go
+ create mode 100644 pkg/proto/control_plane/hopfields.pb.go
+ create mode 100644 proto/control_plane/v1/hopfields.proto
+
+diff --git a/control/beaconing/extender.go b/control/beaconing/extender.go
+index 2c02c5e35..b760ce90f 100644
+--- a/control/beaconing/extender.go
++++ b/control/beaconing/extender.go
 @@ -18,6 +18,7 @@ import (
  	"context"
  	"encoding/binary"
@@ -9,12 +31,12 @@ index ff026164..7157c760 100644
 +	"net"
  	"time"
  
- 	"github.com/scionproto/scion/go/cs/ifstate"
-@@ -65,6 +66,45 @@ type DefaultExtender struct {
+ 	"github.com/scionproto/scion/control/ifstate"
+@@ -60,6 +61,45 @@ type DefaultExtender struct {
  	StaticInfo func() *StaticInfoCfg
  	// EPIC defines whether the EPIC authenticators should be added when the segment is extended.
  	EPIC bool
-+	HopFieldsSender HopFieldsSender
++    HopFieldsSender HopFieldsSender
 +}
 +
 +type RPCHopFields interface {
@@ -56,7 +78,7 @@ index ff026164..7157c760 100644
  }
  
  // Extend extends the beacon with hop fields of the old format.
-@@ -106,6 +146,15 @@ func (s *DefaultExtender) Extend(ctx context.Context, pseg *seg.PathSegment,
+@@ -105,6 +145,15 @@ func (s *DefaultExtender) Extend(
  		PeerEntries: peerEntries,
  		MTU:         int(s.MTU),
  	}
@@ -72,10 +94,10 @@ index ff026164..7157c760 100644
  	if static := s.StaticInfo(); static != nil {
  		asEntry.Extensions.StaticInfo = static.Generate(s.Intfs, ingress, egress)
  	}
-diff --git a/go/cs/beaconing/grpc/BUILD.bazel b/go/cs/beaconing/grpc/BUILD.bazel
-index 8bd9cd56..e28b7cf6 100644
---- a/go/cs/beaconing/grpc/BUILD.bazel
-+++ b/go/cs/beaconing/grpc/BUILD.bazel
+diff --git a/control/beaconing/grpc/BUILD.bazel b/control/beaconing/grpc/BUILD.bazel
+index ef8773add..1960af570 100644
+--- a/control/beaconing/grpc/BUILD.bazel
++++ b/control/beaconing/grpc/BUILD.bazel
 @@ -5,6 +5,7 @@ go_library(
      srcs = [
          "beacon_sender.go",
@@ -83,12 +105,12 @@ index 8bd9cd56..e28b7cf6 100644
 +        "hopfields_sender.go",
          "register.go",
      ],
-     importpath = "github.com/scionproto/scion/go/cs/beaconing/grpc",
-diff --git a/go/cs/beaconing/grpc/hopfields_sender.go b/go/cs/beaconing/grpc/hopfields_sender.go
+     importpath = "github.com/scionproto/scion/control/beaconing/grpc",
+diff --git a/control/beaconing/grpc/hopfields_sender.go b/control/beaconing/grpc/hopfields_sender.go
 new file mode 100644
-index 00000000..2ad75fd8
+index 000000000..5b03d47f1
 --- /dev/null
-+++ b/go/cs/beaconing/grpc/hopfields_sender.go
++++ b/control/beaconing/grpc/hopfields_sender.go
 @@ -0,0 +1,46 @@
 +package grpc
 +
@@ -97,9 +119,9 @@ index 00000000..2ad75fd8
 +	"net"
 +	"time"
 +
-+	"github.com/scionproto/scion/go/lib/ctrl/seg"
-+	"github.com/scionproto/scion/go/pkg/grpc"
-+	cppb "github.com/scionproto/scion/go/pkg/proto/control_plane"
++	"github.com/scionproto/scion/pkg/segment"
++	"github.com/scionproto/scion/pkg/grpc"
++	cppb "github.com/scionproto/scion/pkg/proto/control_plane"
 +)
 +
 +// HopFieldsSender propagates beacons.
@@ -110,10 +132,10 @@ index 00000000..2ad75fd8
 +
 +// SendHopFields sends a beacon to the remote.
 +func (r HopFieldsSender) SendHopFields(ctx context.Context, timestamp time.Time, segID uint16,
-+	hopField seg.HopField, peerEntries []seg.PeerEntry, remote net.Addr) error {
++	hopField segment.HopField, peerEntries []segment.PeerEntry, remote net.Addr) error {
 +	peerHopFields := []*cppb.HopField{}
 +	for _, p := range peerEntries {
-+		peerHopFields = append(peerHopFields, seg.HopFieldToPB(&p.HopField))
++		peerHopFields = append(peerHopFields, segment.HopFieldToPB(&p.HopField))
 +	}
 +
 +	// TODO include beta for peer entries
@@ -129,29 +151,30 @@ index 00000000..2ad75fd8
 +		&cppb.HopFieldsRegistrationRequest{
 +			Timestamp:     timestamp.Unix(),
 +			SegmentId:     uint32(segID),
-+			HopField:      seg.HopFieldToPB(&hopField),
++			HopField:      segment.HopFieldToPB(&hopField),
 +			PeerHopFields: peerHopFields,
 +		},
 +		grpc.RetryProfile...,
 +	)
 +	return err
 +}
-diff --git a/go/cs/main.go b/go/cs/main.go
-index ca0f1cce..dc29b9af 100644
---- a/go/cs/main.go
-+++ b/go/cs/main.go
-@@ -141,6 +141,7 @@ func realMain() error {
- 		Rewriter: nc.AddressRewriter(nil),
- 		Dialer:   quicStack.Dialer,
+diff --git a/control/cmd/control/main.go b/control/cmd/control/main.go
+index b5db65df9..15d46533a 100644
+--- a/control/cmd/control/main.go
++++ b/control/cmd/control/main.go
+@@ -189,6 +189,7 @@ func realMain(ctx context.Context) error {
+ 		},
+ 		Dialer: quicStack.Dialer,
  	}
 +	simpleDialer := &libgrpc.SimpleDialer{}
  
  	trustDB, err := storage.NewTrustStorage(globalCfg.TrustDB)
  	if err != nil {
-@@ -549,6 +550,16 @@ func realMain() error {
- 			},
- 		},
- 	)
+@@ -652,6 +653,16 @@ func realMain(ctx context.Context) error {
+ 		topoInfo := intf.TopoInfo()
+ 		return topoInfo.LinkType == topology.Core || topoInfo.LinkType == topology.Child
+ 	}
++	
 +	log.Debug("globalCfg.General.HopFieldsRegistrationServer",
 +		"globalCfg.General.HopFieldsRegistrationServer",
 +		globalCfg.General.HopFieldsRegistrationServer)
@@ -161,173 +184,74 @@ index ca0f1cce..dc29b9af 100644
 +			Dialer: simpleDialer,
 +		},
 +	}
-+
+ 
  	tasks, err := cs.StartTasks(cs.TasksConfig{
- 		Public:   nc.Public,
- 		Intfs:    intfs,
-@@ -566,7 +577,9 @@ func realMain() error {
- 			RPC: beaconinggrpc.BeaconSender{
- 				Dialer: dialer,
- 			},
-+			HopFieldsSender: hopFieldsSender,
+ 		IA:            topo.IA(),
+@@ -671,6 +682,7 @@ func realMain(ctx context.Context) error {
+ 		BeaconSenderFactory: &beaconinggrpc.BeaconSenderFactory{
+ 			Dialer: dialer,
  		},
 +		HopFieldsSender: hopFieldsSender,
  		SegmentRegister: beaconinggrpc.Registrar{Dialer: dialer},
  		BeaconStore:     beaconStore,
  		Signer:          signer,
-diff --git a/go/cs/onehop/BUILD.bazel b/go/cs/onehop/BUILD.bazel
-index 7c797ff4..4c27ea04 100644
---- a/go/cs/onehop/BUILD.bazel
-+++ b/go/cs/onehop/BUILD.bazel
-@@ -9,12 +9,14 @@ go_library(
-     importpath = "github.com/scionproto/scion/go/cs/onehop",
+diff --git a/control/onehop/BUILD.bazel b/control/onehop/BUILD.bazel
+index 0cd018e8a..4c51d1d1e 100644
+--- a/control/onehop/BUILD.bazel
++++ b/control/onehop/BUILD.bazel
+@@ -6,7 +6,9 @@ go_library(
+     importpath = "github.com/scionproto/scion/control/onehop",
      visibility = ["//visibility:public"],
      deps = [
-+        "//go/cs/beaconing:go_default_library",
-         "//go/lib/addr:go_default_library",
-         "//go/lib/common:go_default_library",
-         "//go/lib/ctrl/seg:go_default_library",
-         "//go/lib/infra/messenger:go_default_library",
-         "//go/lib/log:go_default_library",
-         "//go/lib/serrors:go_default_library",
-+        "//go/lib/slayers/path/onehop:go_default_library",
-         "//go/lib/snet:go_default_library",
-         "//go/lib/spath:go_default_library",
-     ],
-diff --git a/go/cs/onehop/sender.go b/go/cs/onehop/sender.go
-index ce4cf43a..bc4b7375 100644
---- a/go/cs/onehop/sender.go
-+++ b/go/cs/onehop/sender.go
-@@ -22,12 +22,14 @@ import (
- 	"sync"
- 	"time"
- 
-+	"github.com/scionproto/scion/go/cs/beaconing"
- 	"github.com/scionproto/scion/go/lib/addr"
- 	"github.com/scionproto/scion/go/lib/common"
- 	"github.com/scionproto/scion/go/lib/ctrl/seg"
- 	"github.com/scionproto/scion/go/lib/infra/messenger"
- 	"github.com/scionproto/scion/go/lib/log"
- 	"github.com/scionproto/scion/go/lib/serrors"
-+	"github.com/scionproto/scion/go/lib/slayers/path/onehop"
- 	"github.com/scionproto/scion/go/lib/snet"
- 	"github.com/scionproto/scion/go/lib/spath"
- )
-@@ -117,6 +119,15 @@ type BeaconSender struct {
- 	// resolution is not attempted.
- 	AddressRewriter *messenger.AddressRewriter
- 	RPC             RPC
-+	HopFieldsSender beaconing.HopFieldsSender
-+}
-+
-+func (s *BeaconSender) registerHopFields(ctx context.Context, timestamp time.Time, segID uint16,
-+	hopField seg.HopField, peerEntries []seg.PeerEntry) error {
-+	log.Debug("register hop fields at hop fields registration server", "timestamp", timestamp,
-+		"segID", segID, "hopField", hopField, "peerEntries", peerEntries)
-+	s.HopFieldsSender.Send(ctx, timestamp, segID, hopField, peerEntries)
-+	return nil
- }
- 
- // Send packs and sends out the beacon.
-@@ -128,6 +139,20 @@ func (s *BeaconSender) Send(ctx context.Context, bseg *seg.PathSegment, ia addr.
- 		return err
- 	}
- 
-+	log.Debug("Created OneHop path", "path", (spath.Path)(path))
-+	var ohp onehop.Path
-+	if err := ohp.DecodeFromBytes(path.Raw); err != nil {
-+		return serrors.WrapStr("decoding v2 OHP path", err)
-+	}
-+	log.Debug("Decoded path", "path", ohp)
-+	s.registerHopFields(ctx, time.Unix((int64)(ohp.Info.Timestamp), 0), ohp.Info.SegID,
-+		seg.HopField{
-+			ExpTime:     ohp.FirstHop.ExpTime,
-+			ConsIngress: ohp.FirstHop.ConsIngress,
-+			ConsEgress:  ohp.FirstHop.ConsEgress,
-+			MAC:         ohp.FirstHop.Mac},
-+		[]seg.PeerEntry{})
-+
- 	svc := &snet.SVCAddr{
- 		IA:      ia,
- 		Path:    (spath.Path)(path),
-diff --git a/go/lib/ctrl/seg/hop.go b/go/lib/ctrl/seg/hop.go
-index f9fb8b81..fd6f3528 100644
---- a/go/lib/ctrl/seg/hop.go
-+++ b/go/lib/ctrl/seg/hop.go
-@@ -119,3 +119,16 @@ func hopFieldFromPB(pb *cppb.HopField) (HopField, error) {
- 		MAC:         pb.Mac,
- 	}, nil
- }
-+
-+func HopFieldToPB(hf *HopField) *cppb.HopField {
-+	if hf == nil {
-+		panic("hop field must not be nil")
-+	}
-+
-+	return &cppb.HopField{
-+		Ingress: uint64(hf.ConsIngress),
-+		Egress:  uint64(hf.ConsEgress),
-+		ExpTime: uint32(hf.ExpTime),
-+		Mac:     hf.MAC,
-+	}
-+}
-diff --git a/go/lib/env/env.go b/go/lib/env/env.go
-index db9d3590..b80b1c5d 100644
---- a/go/lib/env/env.go
-+++ b/go/lib/env/env.go
-@@ -81,6 +81,9 @@ type General struct {
- 	// ReconnectToDispatcher can be set to true to enable transparent dispatcher
- 	// reconnects.
- 	ReconnectToDispatcher bool `toml:"reconnect_to_dispatcher,omitempty"`
-+	// HopFieldsRegistrationServer is the address of the server to register the generated hop field
-+	// for devices that cannot perform the required crypto themselves
-+	HopFieldsRegistrationServer string `toml:"hop_fields_registration_server,omitempty"`
- }
- 
- // InitDefaults sets the default value for Topology if not already set.
-diff --git a/go/pkg/cs/tasks.go b/go/pkg/cs/tasks.go
-index 1c2588a9..e6861dfa 100644
---- a/go/pkg/cs/tasks.go
-+++ b/go/pkg/cs/tasks.go
-@@ -51,6 +51,7 @@ type TasksConfig struct {
- 	RevCache        revcache.RevCache
- 	BeaconSender    beaconing.BeaconSender
- 	SegmentRegister beaconing.RPC
-+	HopFieldsSender beaconing.HopFieldsSender
- 	BeaconStore     Store
- 	Signer          seg.Signer
- 	Inspector       trust.Inspector
-@@ -202,15 +203,16 @@ func (t *TasksConfig) extender(task string, ia addr.IA, mtu uint16,
++        "//control/beaconing:go_default_library",
+         "//pkg/addr:go_default_library",
++        "//pkg/slayers/path/onehop:go_default_library",
+         "//pkg/snet:go_default_library",
+         "//pkg/snet/path:go_default_library",
+         "//private/app/appnet:go_default_library",
+diff --git a/control/tasks.go b/control/tasks.go
+index 9fb8de43a..96e7bd10a 100644
+--- a/control/tasks.go
++++ b/control/tasks.go
+@@ -53,6 +53,7 @@ type TasksConfig struct {
+ 	PathDB                pathdb.DB
+ 	RevCache              revcache.RevCache
+ 	BeaconSenderFactory   beaconing.SenderFactory
++	HopFieldsSender       beaconing.HopFieldsSender
+ 	SegmentRegister       beaconing.RPC
+ 	BeaconStore           Store
+ 	Signer                seg.Signer
+@@ -200,15 +201,16 @@ func (t *TasksConfig) extender(task string, ia addr.IA, mtu uint16,
  	maxExp func() uint8) beaconing.Extender {
  
  	return &beaconing.DefaultExtender{
 -		IA:         ia,
 -		Signer:     t.Signer,
 -		MAC:        t.MACGen,
--		Intfs:      t.Intfs,
+-		Intfs:      t.AllInterfaces,
 -		MTU:        mtu,
--		MaxExpTime: func() uint8 { return uint8(maxExp()) },
+-		MaxExpTime: func() uint8 { return maxExp() },
 -		StaticInfo: t.StaticInfo,
 -		Task:       task,
--		EPIC:       false,
+-		EPIC:       t.EPIC,
 +		IA:              ia,
 +		Signer:          t.Signer,
 +		MAC:             t.MACGen,
-+		Intfs:           t.Intfs,
++		Intfs:           t.AllInterfaces,
 +		MTU:             mtu,
-+		MaxExpTime:      func() uint8 { return uint8(maxExp()) },
++		MaxExpTime:      func() uint8 { return maxExp() },
 +		StaticInfo:      t.StaticInfo,
 +		Task:            task,
-+		EPIC:            false,
++		EPIC:            t.EPIC,
 +		HopFieldsSender: t.HopFieldsSender,
  	}
  }
  
-diff --git a/go/pkg/proto/control_plane/hopfields.pb.go b/go/pkg/proto/control_plane/hopfields.pb.go
+diff --git a/pkg/proto/control_plane/hopfields.pb.go b/pkg/proto/control_plane/hopfields.pb.go
 new file mode 100644
-index 00000000..e18805a8
+index 000000000..c14674d98
 --- /dev/null
-+++ b/go/pkg/proto/control_plane/hopfields.pb.go
++++ b/pkg/proto/control_plane/hopfields.pb.go
 @@ -0,0 +1,344 @@
 +// Code generated by protoc-gen-go. DO NOT EDIT.
 +// versions:
@@ -546,7 +470,7 @@ index 00000000..e18805a8
 +func file_proto_control_plane_v1_hopfields_proto_init() {
 +	if File_proto_control_plane_v1_hopfields_proto != nil {
 +		return
-+	}
++}
 +	file_proto_control_plane_v1_seg_proto_init()
 +	if !protoimpl.UnsafeEnabled {
 +		file_proto_control_plane_v1_hopfields_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
@@ -574,10 +498,10 @@ index 00000000..e18805a8
 +			}
 +		}
 +	}
-+	type x struct{}
++type x struct{}
 +	out := protoimpl.TypeBuilder{
 +		File: protoimpl.DescBuilder{
-+			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
++		GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 +			RawDescriptor: file_proto_control_plane_v1_hopfields_proto_rawDesc,
 +			NumEnums:      0,
 +			NumMessages:   2,
@@ -627,7 +551,7 @@ index 00000000..e18805a8
 +}
 +
 +// HopFieldsRegistrationServiceServer is the server API for HopFieldsRegistrationService service.
-+type HopFieldsRegistrationServiceServer interface {
++ype HopFieldsRegistrationServiceServer interface {
 +	HopFieldsRegistration(context.Context, *HopFieldsRegistrationRequest) (*HopFieldsRegistrationResponse, error)
 +}
 +
@@ -673,21 +597,43 @@ index 00000000..e18805a8
 +	Streams:  []grpc.StreamDesc{},
 +	Metadata: "proto/control_plane/v1/hopfields.proto",
 +}
-diff --git a/go/pkg/router/control/bfd.go b/go/pkg/router/control/bfd.go
-index 616fc76c..73864343 100644
---- a/go/pkg/router/control/bfd.go
-+++ b/go/pkg/router/control/bfd.go
-@@ -58,7 +58,7 @@ var (
- 		DesiredMinTxInterval:  200 * time.Millisecond,
- 		RequiredMinRxInterval: 200 * time.Millisecond,
- 		// Disable indicates if BFD is disabled globally.
--		Disable: false,
-+		Disable: true,
- 	}
- )
+diff --git a/pkg/segment/hop.go b/pkg/segment/hop.go
+index da2423e51..d90d81b51 100644
+--- a/pkg/segment/hop.go
++++ b/pkg/segment/hop.go
+@@ -122,3 +122,16 @@ func hopFieldFromPB(pb *cppb.HopField) (HopField, error) {
+ 		MAC:         m,
+ 	}, nil
+ }
++
++func HopFieldToPB(hf *HopField) *cppb.HopField {
++	if hf == nil {
++		panic("hop field must not be nil")
++	}
++
++	return &cppb.HopField{
++		Ingress: uint64(hf.ConsIngress),
++		Egress:  uint64(hf.ConsEgress),
++		ExpTime: uint32(hf.ExpTime),
++		Mac:     hf.MAC[:],
++	}
++}
+diff --git a/private/env/env.go b/private/env/env.go
+index 1c59a1822..a03eba8cb 100644
+--- a/private/env/env.go
++++ b/private/env/env.go
+@@ -82,6 +82,9 @@ type General struct {
+ 	// ReconnectToDispatcher can be set to true to enable transparent dispatcher
+ 	// reconnects.
+ 	ReconnectToDispatcher bool `toml:"reconnect_to_dispatcher,omitempty"`
++	// HopFieldsRegistrationServer is the address of the server to register the generated hop field
++	// for devices that cannot perform the required crypto themselves
++	HopFieldsRegistrationServer string `toml:"hop_fields_registration_server,omitempty"`
+ }
  
+ // InitDefaults sets the default value for Topology if not already set.
 diff --git a/proto/control_plane/v1/BUILD.bazel b/proto/control_plane/v1/BUILD.bazel
-index 4ccec841..7c8171b9 100644
+index 7a0e59f88..e40d30f58 100644
 --- a/proto/control_plane/v1/BUILD.bazel
 +++ b/proto/control_plane/v1/BUILD.bazel
 @@ -4,6 +4,7 @@ proto_library(
@@ -695,12 +641,12 @@ index 4ccec841..7c8171b9 100644
      srcs = [
          "cppki.proto",
 +        "hopfields.proto",
-         "legacy.proto",
+         "drkey.proto",
          "renewal.proto",
          "seg.proto",
 diff --git a/proto/control_plane/v1/hopfields.proto b/proto/control_plane/v1/hopfields.proto
 new file mode 100644
-index 00000000..a4d4b302
+index 000000000..a4d4b3020
 --- /dev/null
 +++ b/proto/control_plane/v1/hopfields.proto
 @@ -0,0 +1,27 @@
@@ -731,3 +677,6 @@ index 00000000..a4d4b302
 +}
 +
 +message HopFieldsRegistrationResponse {}
+-- 
+2.25.1
+

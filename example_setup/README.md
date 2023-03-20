@@ -93,7 +93,7 @@ cd $P4_SCION
 python3 controller/load_config.py $CONFIG/switch_config.json
 python3 controller/hopfields_registration_server.py
 python3 controller/remove_expired_hop_fields.py
-sudo python3 controller/onehop_processor.py -k $SCION/gen/ASff00_0_110/keys/master0.key -m $CONFIG/interface_mapping.json
+sudo python3 controller/onehop_processor.py -k $SCION/gen/ASff00_0_110/keys/master0.key -m $CONFIG/interface_mapping.json -b $CONFIG/bfd_config.json
 ```
 
 For the SCION VM we have two different configurations: one where AS 110 is the core AS and AS 111 and AS 112 are children and one where AS 112 is the core AS, AS 110 is a child of AS 112 and AS 111 is a child of AS 110. The configurations for SCION can be found in `config/scion-parent` and `config/scion-child` respectively.

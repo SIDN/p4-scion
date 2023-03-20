@@ -40,7 +40,7 @@ In `example_setup/README.md`, an explanation can be found to run the P4 implemen
 
 Currently the following features are not yet provided:
 - Peering connections
-- BFD support to detect link failures between border routers
+- SCMP support to communicate failures between border routers
 - Mixing of IPv4 and IPv6
 - Support to process EPIC and COLIBRI paths 
 
@@ -48,6 +48,7 @@ Currently the following features are not yet provided:
 
 - Joeri de Ruiter, SIDN Labs
 - Caspar Schutijser, SIDN Labs
+- Robin Wehner, NetSys Lab OvGU Magdeburg
 
 ## License
 
